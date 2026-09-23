@@ -107,7 +107,7 @@ def _files(app_name: str) -> dict:
             f"from apps.{app_name}.views import {model_name}ListAPIView\n"
             "from core.enums import HTTP\n"
             "\n"
-            "router = APIRouter(responses={404: {\"description\": \"Not found\"}})\n"
+            "router = APIRouter()\n"
             "\n"
             f"router.add_api_route(\"/\", {model_name}ListAPIView.as_view(), methods=[HTTP.GET, HTTP.POST])\n"
         ),
@@ -136,6 +136,6 @@ class Command(BaseCommand):
                 f.write(content)
 
         print(f'➡️ Successfully created app "{app_name}" inside the "{APPS_DIR}" directory with the desired files. 👍')
-        print(f'   Remember to include its router in main.py, e.g.:')
+        print(f'   Remember to include its router in urls.py, e.g.:')
         print(f'   from apps.{app_name}.urls import router as {app_name}_router')
-        print(f'   app.include_router({app_name}_router, prefix="/{app_name}", tags=["{app_name.capitalize()}"])')
+        print(f'   router.include_router({app_name}_router, prefix="/{app_name}", tags=["{app_name.capitalize()}"], responses=NOT_FOUND_RESPONSE)')
