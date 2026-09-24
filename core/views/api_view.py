@@ -1,7 +1,8 @@
-from typing import Any, Callable, List, Type, TypeVar, Union
+from typing import Callable, Type, TypeVar, Union, Any, List
 
-from fastapi import Request
+from fastapi import Depends, Request
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.db import get_db
 
@@ -45,26 +46,24 @@ at route-registration time, before request.method is known.
 
 
 class APIView:
-    def __init__(self) -> None:
-        # Every core.db.get_db() generator opened by get_service() below,
-        # so as_view()'s endpoint() can finish (and therefore close) each
-        # one after the dispatched method returns - see as_view().
-        self._db_generators: List[Any] = []
+    def __init__(self, db: AsyncSession) -> None:
+        # `db` is resolved by FastAPI's real Depends(get_db) in as_view()'s
+        # endpoint() below, not driven by hand - FastAPI owns the get_db()
+        # generator's lifecycle (including closing it) the same way it
+        # would for any normal Depends()-based route.
+        self._db = db
 
     async def get_service(self, service_cls: Type[ServiceT]) -> ServiceT:
-        """Builds a Service the same way `Depends()` would in a normal
-        function-based route, e.g. `await self.get_service(UserReadService)`.
+        """Builds a Service from the AsyncSession FastAPI already injected
+        into this view via Depends(get_db), e.g.
+        `await self.get_service(UserReadService)`.
 
         Needed because as_view() (see below) can't expose per-method
         `Depends()` parameters - it doesn't know in advance which method
         will run, so FastAPI never inspects get()'s/post()'s own signature
-        to resolve them. This drives core.db.get_db()'s generator by hand
-        to get the same AsyncSession a `Depends(get_db)` would have
-        produced, and constructs the service with it directly."""
-        db_gen = get_db()
-        db = await anext(db_gen)
-        self._db_generators.append(db_gen)
-        return service_cls(db)
+        to resolve them. The session itself is still real DI; only the
+        per-method service construction is done by hand."""
+        return service_cls(self._db)
 
     def serialize(self, obj: Union[Any, List[Any]], schema: Type[BaseModel]):
         """schema.model_validate applied to one object or a list of objects,
@@ -89,29 +88,25 @@ class APIView:
         # the route, and a bare **kwargs would show up as a literal required
         # "kwargs" field instead of being passed through. Since as_view()
         # doesn't know in advance which method will run, it can't expose
-        # per-method params (path params, Depends()) here either - each
+        # per-method params (path params, per-method Depends()) here - each
         # dispatched method only ever receives `request` (see module
         # docstring for what that costs on the request-body side; services
-        # are built via self.get_service() instead of Depends()).
-        async def endpoint(request: Request):
+        # are built via self.get_service() from the one `db` below instead
+        # of their own Depends()).
+        #
+        # `db` IS real Depends(get_db) though: it's a class-level (not
+        # per-method) dependency, so FastAPI can see and resolve it here,
+        # and it owns get_db()'s generator lifecycle - including closing it
+        # - exactly as it would for a normal Depends()-injected session.
+        async def endpoint(request: Request, db: AsyncSession = Depends(get_db)):
             action = request.method.lower()
-            view = cls()
+            view = cls(db)
             method = getattr(view, action, None)
             if method is None:
                 raise AttributeError(
                     f"{cls.__name__} has no method for HTTP verb {request.method!r} "
                     f"(expected an async def {action}(self, ...) on the class)."
                 )
-            try:
-                return await method(request=request)
-            finally:
-                # get_service() drives core.db.get_db()'s generator by hand
-                # (Depends() would normally do this); finish it here so its
-                # `finally: await db.close()` still runs and the session
-                # doesn't leak, mirroring what FastAPI's dependency-cleanup
-                # does automatically for a Depends()-injected session.
-                for db_gen in view._db_generators:
-                    async for _ in db_gen:
-                        pass
+            return await method(request=request)
 
         return endpoint
