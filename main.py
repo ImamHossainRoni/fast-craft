@@ -1,7 +1,7 @@
 from fastapi import FastAPI
-from apps.users.views import router as user_router
 from config import settings
+from urls import router
 
 app = FastAPI(title=settings.PROJECT_NAME, version="1.0.1")
 
-app.include_router(user_router, prefix="/users", tags=['User'])
+app.include_router(router)
