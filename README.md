@@ -34,6 +34,7 @@ core/       # shared/core utilities (db session, management commands, etc.)
 config.py   # settings loaded from .env
 main.py     # FastAPI app + routers
 manage.py   # CLI entrypoint for management commands
+migrations/ # per-app migration files (migrations/<app>/0001_initial.py, ...)
 run.py      # entrypoint
 ```
 
@@ -59,6 +60,25 @@ After creating the app, wire its router into `main.py`:
 from apps.<app_name>.urls import router as <app_name>_router
 app.include_router(<app_name>_router, prefix="/<app_name>", tags=["<AppName>"])
 ```
+
+### Migrations
+
+Django-style migrations built on Alembic. Every `apps/<app>/models.py` is discovered automatically, and each app gets its own numbered migration history under `migrations/<app>/`. The database comes from `DATABASE_URL` in `.env` (defaults to SQLite).
+
+```bash
+python manage.py makemigrations                        # detect model changes in every app
+python manage.py makemigrations users -m "add phone"   # only the users app, with a name
+python manage.py makemigrations users --empty -m "backfill data"  # blank migration to fill in by hand
+
+python manage.py migrate                   # apply everything
+python manage.py migrate users 0002        # move users to 0002 (up or down)
+python manage.py migrate users zero        # roll back all of users' migrations
+python manage.py migrate --fake-initial    # mark 0001s as applied if their tables already exist
+
+python manage.py showmigrations            # [X] = applied
+```
+
+Tables are no longer created automatically on startup — run `python manage.py migrate` after pulling changes. If you already have a database created by the old `create_all`, run `python manage.py migrate --fake-initial` once.
 
 New commands can be added under `core/management/commands/` by subclassing `BaseCommand` — they're auto-discovered, no registration needed.
 
