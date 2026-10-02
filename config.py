@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "FastCraft: FastAPI Based Backend Starter Kit"
     BASE_DIR: str = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     API_V1_PREFIX: str = "/api/v1"
+    DATABASE_URL: str = config("DATABASE_URL", default="sqlite+aiosqlite:///db.sqlite3.db")
     SECRET_KEY: str = config("SECRET_KEY")
     JWT_ALGORITHM: str = config("JWT_ALGORITHM")
     ACCESS_TOKEN_EXPIRE_MINUTES: int = config("ACCESS_TOKEN_EXPIRE_MINUTES")

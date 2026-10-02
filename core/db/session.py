@@ -1,8 +1,11 @@
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 
-# Create an asynchronous SQLAlchemy engine for SQLite
-engine = create_async_engine("sqlite+aiosqlite:///db.sqlite3.db", connect_args={"check_same_thread": False})
+from config import settings
+
+# sqlite's async driver needs check_same_thread=False; other drivers (e.g. asyncpg) don't accept it
+connect_args = {"check_same_thread": False} if settings.DATABASE_URL.startswith("sqlite") else {}
+engine = create_async_engine(settings.DATABASE_URL, connect_args=connect_args)
 
 # Create an asynchronous session factory using the engine
 SessionLocal = async_sessionmaker(engine)
@@ -22,8 +25,6 @@ async def get_db():
              # Use db for database operations
         ```
     """
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
     db = SessionLocal()
     try:
         yield db
